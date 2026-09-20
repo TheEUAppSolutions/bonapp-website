@@ -96,11 +96,43 @@ Also worth fixing while in there: **Invoice Maker's description still contains
 
 ## Deploying
 
-Repository: `TheEUAppSolutions/bonapp-website`, served by GitHub Pages. `CNAME` pins
-`bon-app.net`.
+Repository: `TheEUAppSolutions/bonapp-website`, served by GitHub Pages.
+
+Two branches, because the domain hasn't moved yet:
+
+| Branch | Built with | Serves | Purpose |
+| --- | --- | --- | --- |
+| `main` | `./build.sh` (root paths, has `CNAME`) | `bon-app.net` | the real site, **after** the DNS cutover |
+| `preview` | `python3 src/build.py --base /bonapp-website`, no `CNAME` | [theeuappsolutions.github.io/bonapp-website](https://theeuappsolutions.github.io/bonapp-website/) | reviewable today |
+
+Pages currently points at `preview`. Two traps worth knowing:
+
+- A root-path build under a project URL breaks: every asset is referenced as
+  `/assets/...`, which resolves to `theeuappsolutions.github.io/assets/...` and 404s.
+  That's what `--base` fixes.
+- **Changing the Pages source does not trigger a build.** After switching branches, push
+  a commit or run
+  `gh api -X POST repos/TheEUAppSolutions/bonapp-website/pages/builds`, otherwise Pages
+  keeps serving the previous branch's output and the change looks like it did nothing.
+- Removing the custom domain in the Pages UI **commits a `CNAME` deletion** to the source
+  branch. If that happens to `main`, rebuild to restore it.
+
+Pages responses carry `cache-control: max-age=600`, so a browser can hold the old HTML
+for ten minutes after a deploy. Hard-refresh before concluding something is broken.
+
+### Updating the preview
+
+```bash
+git checkout preview && git merge main
+python3 src/build.py --base /bonapp-website
+rm -f CNAME && printf 'User-agent: *\nDisallow: /\n' > robots.txt
+git commit -am "Refresh preview" && git push
+```
+
+### Cutover
 
 Claim the domain on GitHub **before** moving DNS, or someone else can host on it in the
-gap. `bon-app.net` is registered with **Hostinger** (nameservers `ns1/ns2.dns-parking.com`),
+gap. `bon-app.net` is registered with **Hostinger** (nameservers `ns1`/`ns2.dns-parking.com`),
 so DNS is edited in hPanel, not Squarespace.
 
 1. Repo → Settings → Pages → Branch `main`, `/ (root)`. The `CNAME` file sets the domain.
@@ -114,8 +146,12 @@ so DNS is edited in hPanel, not Squarespace.
 | **Edit** | `www` | CNAME | point at `theeuappsolutions.github.io` |
 
    **Do not touch** the `MX` records (`mx1`/`mx2.hostinger.com` — email for info@) or any
-   TXT/SPF record.
+   TXT/SPF record. `www` currently points at Hostinger's CDN, so edit it rather than
+   deleting it.
 3. Wait for `dig +short bon-app.net` to return the GitHub IPs, then for the certificate,
    then tick **Enforce HTTPS**.
 4. Check `https://bon-app.net/privacy-policy/` returns 200 before cancelling Hostinger
    hosting — that URL is cited from a live App Store listing.
+
+There is no outage risk in this cutover: the Hostinger site already returns HTTP 500 on
+every URL.
