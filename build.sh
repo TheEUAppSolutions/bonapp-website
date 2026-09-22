@@ -1,11 +1,21 @@
 #!/bin/bash
-# Full rebuild: refresh App Store data, pull any new artwork, regenerate the site, check it.
+# Full rebuild of the Bon App & T site.
+#
+# The site is hosted at euappsolutions.com/bonapp/, so it is written into the
+# euappsolutions-site checkout next to this one. This repo keeps the source, and its own
+# root becomes a set of redirects so bon-app.net forwards there path for path.
 #
 #   ./build.sh              refresh ratings from the App Store, then build
 #   ./build.sh --offline    build from the committed data, no network
 #
+# Afterwards, commit in BOTH repos: euappsolutions-site (the site) and this one
+# (source + bon-app.net redirects).
+#
 set -euo pipefail
 cd "$(dirname "$0")"
+
+MOUNT="https://euappsolutions.com/bonapp"
+EU_SITE="${EU_SITE:-$(cd .. && pwd)/euappsolutions-site}"
 
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
 
@@ -13,6 +23,11 @@ eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
 # one is first on PATH must work, so fail loudly here rather than half-way through a build.
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || {
   echo "python3 is $(python3 -V 2>&1); this build needs 3.9 or newer" >&2
+  exit 1
+}
+
+[[ -d "$EU_SITE/.git" ]] || {
+  echo "expected the euappsolutions.com checkout at $EU_SITE (set EU_SITE to override)" >&2
   exit 1
 }
 
@@ -27,11 +42,15 @@ else
   python3 src/make_social.py
 fi
 
-echo "==> building pages"
-python3 src/build.py "${@:2}"
+echo "==> building the site into $EU_SITE/bonapp"
+python3 src/build.py --mount "$MOUNT" --out "$EU_SITE/bonapp"
 
-echo "==> checking output"
-python3 src/check.py
+echo "==> checking it"
+python3 src/check.py --mount "$MOUNT" --root "$EU_SITE/bonapp"
+
+echo "==> writing bon-app.net redirects here"
+python3 src/build.py --redirect-to "$MOUNT"
 
 echo
-echo "Done. Preview with:  python3 -m http.server 4173  →  http://localhost:4173"
+echo "Done. Preview: (cd $EU_SITE && python3 -m http.server 4173) → http://localhost:4173/bonapp/"
+echo "Then commit in both repos."

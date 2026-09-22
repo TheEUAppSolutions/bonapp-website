@@ -10,12 +10,22 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+SRCROOT = Path(__file__).resolve().parent.parent   # this repo: apps.json lives here
+ROOT = SRCROOT                                      # the built site being checked
 SITE = "https://bon-app.net"
 
-# must match the --base the site was built with, so hrefs resolve back to disk
+# must match how the site was built, so hrefs resolve back to disk:
+#   --base /x                      staging prefix, canonicals still point at bon-app.net
+#   --mount https://host/x --root DIR   hosted under another site, checked where it was built
 BASE = ""
-if "--base" in sys.argv:
+MOUNTED = False
+if "--mount" in sys.argv:
+    from urllib.parse import urlsplit
+    _m = urlsplit(sys.argv[sys.argv.index("--mount") + 1])
+    SITE, BASE, MOUNTED = f"{_m.scheme}://{_m.netloc}", "/" + _m.path.strip("/"), True
+    if "--root" in sys.argv:
+        ROOT = Path(sys.argv[sys.argv.index("--root") + 1]).resolve()
+elif "--base" in sys.argv:
     BASE = "/" + sys.argv[sys.argv.index("--base") + 1].strip("/")
 
 problems = []
@@ -41,12 +51,13 @@ def resolve(href):
 
 
 def main():
-    pages = sorted(p for p in ROOT.rglob("*.html") if "src" not in p.parts)
+    pages = sorted(p for p in ROOT.rglob("*.html")
+                   if p.relative_to(ROOT).parts[0] not in ("src", "assets"))
     if not pages:
         print("no pages found — run build.py first")
         return 1
 
-    apps = json.loads((ROOT / "src" / "apps.json").read_text())
+    apps = json.loads((SRCROOT / "src" / "apps.json").read_text())
     store_urls = {a["storeUrl"] for a in apps}
     titles, descriptions = {}, {}
 
@@ -61,7 +72,7 @@ def main():
         # A page whose canonical points at a different URL is a deliberate alias
         # (the paths WordPress served as 301s). Duplicate title/description is the
         # correct outcome there, so only compare pages that are canonical to themselves.
-        own_url = f"{SITE}/{rel.parent.as_posix().strip('.').strip('/')}"
+        own_url = f"{SITE}{BASE if MOUNTED else ''}/{rel.parent.as_posix().strip('.').strip('/')}"
         own_url = (own_url.rstrip("/") + "/") if rel.name == "index.html" else None
         is_alias = bool(canonical and own_url and canonical.group(1) != own_url)
 
@@ -125,7 +136,7 @@ def main():
             problems.append(f"no page for {app['slug']}")
         if not (ROOT / "assets" / "img" / "icons" / f"{app['slug']}.webp").exists():
             problems.append(f"no icon for {app['slug']}")
-        if f"{SITE}/apps/{app['slug']}/" not in sitemap:
+        if f"{SITE}{BASE if MOUNTED else ''}/apps/{app['slug']}/" not in sitemap:
             problems.append(f"{app['slug']} missing from sitemap")
 
     # URLs cited from live App Store listings — these must never 404
@@ -142,7 +153,8 @@ def main():
         if "{{APP_NAME}}" in page.read_text(encoding="utf-8"):
             problems.append(f"{page.relative_to(ROOT)}: unfilled {{{{APP_NAME}}}} placeholder")
 
-    required = [".nojekyll", "robots.txt", "404.html"]
+    # a mounted copy lives inside another site, which owns these files
+    required = [] if MOUNTED else [".nojekyll", "robots.txt", "404.html"]
     if not BASE:
         # a --base build is a github.io preview; the custom domain only applies at the root
         required.append("CNAME")

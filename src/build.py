@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 """Generate the bon-app.net static site.
 
-    python3 src/build.py                 # build for the custom domain (paths at /)
-    python3 src/build.py --base /repo    # build for a github.io project URL
+    python3 src/build.py                          # standalone at bon-app.net
+    python3 src/build.py --base /repo             # github.io project-URL preview
+    python3 src/build.py --mount https://euappsolutions.com/bonapp \
+                         --out ../euappsolutions-site/bonapp   # hosted under another site
+    python3 src/build.py --redirect-to https://euappsolutions.com/bonapp
+                                                  # bon-app.net -> wherever it now lives
+
+--base is a staging prefix: canonical URLs strip it and still point at bon-app.net.
+--mount is the real address: the prefix is part of every canonical URL, and the
+parent site owns CNAME, robots.txt and 404.html, so those are not written.
 
 Forked from the euappsolutions-site generator; same design system and same checks.
 Everything is written to the repository root so GitHub Pages can serve the branch
@@ -10,6 +18,7 @@ directly. Sources live in src/ and assets/ and are left alone.
 """
 import html
 import json
+import shutil
 import sys
 from datetime import date
 from pathlib import Path
@@ -24,6 +33,8 @@ EMAIL = "info@bon-app.net"
 ADDRESS = ["71-75 Shelton Street", "Covent Garden", "London WC2H 9JQ", "United Kingdom"]
 
 BASE = ""
+MOUNTED = False   # True when the prefix is part of the real URL (see --mount)
+OUT = ROOT        # where generated pages go; sources are always read from ROOT
 
 # Legal pages. The two umbrella documents keep the paths the old WordPress site used --
 # Timestamp Camera's App Store listing cites /privacy-policy/ -- and each app additionally
@@ -55,6 +66,19 @@ def url(path=""):
 
 def asset(path):
     return f"{BASE}/assets/{path.lstrip('/')}"
+
+
+def absu(path=""):
+    """Absolute canonical URL for a site path."""
+    prefix = BASE if MOUNTED else ""
+    path = path.strip("/")
+    return f"{SITE}{prefix}/{path}/" if path else f"{SITE}{prefix}/"
+
+
+def absa(path):
+    """Absolute URL for an asset, for og:image and structured data."""
+    prefix = BASE if MOUNTED else ""
+    return f"{SITE}{prefix}/assets/{path.lstrip('/')}"
 
 
 def thousands(n):
@@ -110,9 +134,8 @@ def mark():
 def head(title, description, path, *, image=None, jsonld=None, noindex=False,
          canonical_path=None):
     path = canonical_path if canonical_path is not None else path
-    canonical = SITE + url(path).replace(BASE, "", 1) if BASE else SITE + url(path)
-    image = image or (SITE + asset("img/og.png").replace(BASE, "", 1) if BASE
-                      else SITE + asset("img/og.png"))
+    canonical = absu(path)
+    image = image or absa("img/og.png")
     ld = f'\n<script type="application/ld+json">{json.dumps(jsonld)}</script>' if jsonld else ""
     robots = '\n<meta name="robots" content="noindex,follow">' if noindex else ""
     return f"""<!doctype html>
@@ -263,11 +286,11 @@ def fill(body, app_name):
 # --- pages -------------------------------------------------------------------
 
 def write(path, content):
-    out = ROOT / "index.html" if path == "" else ROOT / (
+    out = OUT / "index.html" if path == "" else OUT / (
         path if path.endswith((".html", ".xml", ".txt")) else f"{path}/index.html")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
-    pages_built.append(str(out.relative_to(ROOT)))
+    pages_built.append(str(out.relative_to(OUT)))
 
 
 def page_home(apps, totals):
@@ -277,9 +300,9 @@ def page_home(apps, totals):
         "@type": "Organization",
         "name": COMPANY_LEGAL,
         "alternateName": COMPANY,
-        "url": SITE + "/",
+        "url": absu(""),
         "email": EMAIL,
-        "logo": SITE + "/assets/img/mark.svg",
+        "logo": absa("img/mark.svg"),
         "address": {
             "@type": "PostalAddress",
             "streetAddress": "71-75 Shelton Street, Covent Garden",
@@ -424,7 +447,7 @@ def page_app(app, apps):
 
     return head(
         f"{app['name']} — {COMPANY}", app["tagline"], f"apps/{app['slug']}",
-        image=SITE + f"/assets/img/icons/{app['slug']}@512.png", jsonld=jsonld,
+        image=absa(f"img/icons/{app['slug']}@512.png"), jsonld=jsonld,
     ) + masthead("apps") + f"""
 <section class="app-hero">
 <div class="wrap">
@@ -625,14 +648,107 @@ def page_404(apps):
 """ + footer(apps)
 
 
+# --- redirects (bon-app.net -> wherever the site now lives) -------------------
+
+# Paths the old WordPress site served, from the Wayback Machine index. Anything cited
+# externally has to keep resolving: Chooser! lists bon-app.net as its seller URL and
+# Timestamp Camera's privacy policy is bon-app.net/privacy-policy/.
+LEGACY_PATHS = {
+    "about": "about", "contact": "contact",
+    "hello-world": "", "category/uncategorized": "",
+    "author/omar-a-hussamigmail-com": "",
+}
+
+
+def redirect_stub(target):
+    t = e(target)
+    return f"""<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Moved — {e(COMPANY)}</title>
+<link rel="canonical" href="{t}">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url={t}">
+<script>location.replace({json.dumps(target)} + location.search + location.hash)</script>
+</head>
+<body><p>This page has moved to <a href="{t}">{t}</a>.</p></body>
+</html>
+"""
+
+
+def write_redirects(apps, target_root):
+    """Replace the repo-root site with stubs pointing at target_root, path for path.
+
+    GitHub Pages cannot send a 301, so each known path gets a meta-refresh + JS stub
+    (works without JavaScript, and keeps query strings with it). Every other path falls
+    through to 404.html, which forwards the requested path unchanged -- so even a URL
+    nobody thought to list still lands on its counterpart.
+    """
+    target_root = target_root.rstrip("/")
+
+    def to(path):
+        path = path.strip("/")
+        return f"{target_root}/{path}/" if path else f"{target_root}/"
+
+    paths = ([""] + ["apps", "about", "contact", "legal"]
+             + [f"apps/{a['slug']}" for a in apps]
+             + list(LEGAL_UMBRELLA) + list(LEGAL_ALIASES)
+             + [f"legal/{a['slug']}/{k}" for a in apps for k in ("privacy", "terms")])
+    for path in paths:
+        write(path, redirect_stub(to(path)))
+    for old, new in LEGACY_PATHS.items():
+        write(old, redirect_stub(to(new)))
+
+    write("404.html", f"""<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Moved — {e(COMPANY)}</title>
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url={e(to(''))}">
+<script>location.replace({json.dumps(target_root)} + location.pathname + location.search + location.hash)</script>
+</head>
+<body><p>{e(COMPANY)} has moved to <a href="{e(to(''))}">{e(to(''))}</a>.</p></body>
+</html>
+""")
+    write("robots.txt", "User-agent: *\nDisallow: /\n")
+    (ROOT / "CNAME").write_text("bon-app.net\n")
+    (ROOT / ".nojekyll").write_text("")
+    # stubs replace every generated page; drop the now-orphaned standalone sitemap
+    stale = ROOT / "sitemap.xml"
+    if stale.exists():
+        stale.unlink()
+    print(f"wrote {len(pages_built)} redirect files -> {target_root}/")
+
+
 # --- build -------------------------------------------------------------------
 
-def main():
-    global BASE
-    if "--base" in sys.argv:
-        BASE = "/" + sys.argv[sys.argv.index("--base") + 1].strip("/")
+def arg(name):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else None
 
+
+def main():
+    global BASE, MOUNTED, OUT, SITE
     apps = json.loads((SRC / "apps.json").read_text())
+
+    if arg("--redirect-to"):
+        write_redirects(apps, arg("--redirect-to"))
+        return
+
+    if arg("--mount"):
+        from urllib.parse import urlsplit
+        mount = urlsplit(arg("--mount"))
+        SITE = f"{mount.scheme}://{mount.netloc}"
+        BASE = "/" + mount.path.strip("/")
+        MOUNTED = True
+        OUT = Path(arg("--out") or ROOT).resolve()
+        OUT.mkdir(parents=True, exist_ok=True)
+        # the mounted copy is self-contained: it carries its own css/js/images
+        shutil.copytree(ROOT / "assets", OUT / "assets", dirs_exist_ok=True)
+    elif arg("--base"):
+        BASE = "/" + arg("--base").strip("/")
+
     ratings = sum(a["ratingCount"] for a in apps)
     totals = {
         "count": len(apps),
@@ -673,14 +789,12 @@ def main():
                              fill(bodies[source], app["name"]), apps,
                              subtitle=app["storeName"]))
 
-    write("404.html", page_404(apps))
-
     urls = ([""] + ["apps", "about", "contact", "legal"]
             + [f"apps/{a['slug']}" for a in apps] + list(LEGAL_UMBRELLA)
             + [f"legal/{a['slug']}/{k}" for a in apps for k in ("privacy", "terms")])
     today = date.today().isoformat()
     entries = "\n".join(
-        f"  <url><loc>{SITE}/{(p + '/') if p else ''}</loc>"
+        f"  <url><loc>{absu(p)}</loc>"
         f"<lastmod>{today}</lastmod>"
         f"<priority>{'1.0' if not p else '0.8' if p == 'apps' else '0.6'}</priority></url>"
         for p in urls
@@ -688,12 +802,15 @@ def main():
     write("sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n'
           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
           f"{entries}\n</urlset>\n")
-    write("robots.txt", f"User-agent: *\nAllow: /\n\nSitemap: {SITE}/sitemap.xml\n")
 
-    (ROOT / "CNAME").write_text("bon-app.net\n")
-    (ROOT / ".nojekyll").write_text("")
+    if not MOUNTED:
+        # a mounted copy lives inside someone else's site: the parent owns these
+        write("404.html", page_404(apps))
+        write("robots.txt", f"User-agent: *\nAllow: /\n\nSitemap: {absu('')}sitemap.xml\n")
+        (ROOT / "CNAME").write_text("bon-app.net\n")
+        (ROOT / ".nojekyll").write_text("")
 
-    print(f"built {len(pages_built)} files")
+    print(f"built {len(pages_built)} files" + (f" into {OUT}" if MOUNTED else ""))
 
 
 if __name__ == "__main__":

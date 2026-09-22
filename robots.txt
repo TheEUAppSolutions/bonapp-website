@@ -1,4 +1,2 @@
 User-agent: *
-Allow: /
-
-Sitemap: https://bon-app.net/sitemap.xml
+Disallow: /
