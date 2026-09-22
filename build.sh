@@ -1,9 +1,9 @@
 #!/bin/bash
 # Full rebuild of the Bon App & T site.
 #
-# The site is hosted at euappsolutions.com/bonapp/, so it is written into the
-# euappsolutions-site checkout next to this one. This repo keeps the source, and its own
-# root becomes a set of redirects so bon-app.net forwards there path for path.
+# The site is hosted at bon-app.net, served from this repo's root by GitHub Pages.
+# It was briefly mounted at euappsolutions.com/bonapp/, so that path is kept as redirect
+# stubs pointing back here -- any URL shared in the meantime keeps working.
 #
 #   ./build.sh              refresh ratings from the App Store, then build
 #   ./build.sh --offline    build from the committed data, no network
@@ -14,7 +14,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MOUNT="https://euappsolutions.com/bonapp"
+SITE="https://bon-app.net"
+MOUNTED_AT="bonapp"   # the old location inside the euappsolutions site
 EU_SITE="${EU_SITE:-$(cd .. && pwd)/euappsolutions-site}"
 
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
@@ -42,15 +43,15 @@ else
   python3 src/make_social.py
 fi
 
-echo "==> building the site into $EU_SITE/bonapp"
-python3 src/build.py --mount "$MOUNT" --out "$EU_SITE/bonapp"
+echo "==> building the site here (served at $SITE)"
+python3 src/build.py
 
 echo "==> checking it"
-python3 src/check.py --mount "$MOUNT" --root "$EU_SITE/bonapp"
+python3 src/check.py
 
-echo "==> writing bon-app.net redirects here"
-python3 src/build.py --redirect-to "$MOUNT"
+echo "==> pointing the old euappsolutions.com/$MOUNTED_AT/ path back here"
+python3 src/build.py --redirect-to "$SITE" --out "$EU_SITE/$MOUNTED_AT"
 
 echo
-echo "Done. Preview: (cd $EU_SITE && python3 -m http.server 4173) → http://localhost:4173/bonapp/"
-echo "Then commit in both repos."
+echo "Done. Preview with:  python3 -m http.server 4174  →  http://localhost:4174"
+echo "Commit here, and in $EU_SITE for the redirect stubs."

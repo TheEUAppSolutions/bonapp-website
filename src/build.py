@@ -668,6 +668,7 @@ def redirect_stub(target):
 <head>
 <meta charset="utf-8">
 <title>Moved — {e(COMPANY)}</title>
+<meta name="description" content="This page has moved. {e(COMPANY_LEGAL)} and its apps are now at {t}">
 <link rel="canonical" href="{t}">
 <meta name="robots" content="noindex">
 <meta http-equiv="refresh" content="0; url={t}">
@@ -678,7 +679,7 @@ def redirect_stub(target):
 """
 
 
-def write_redirects(apps, target_root):
+def write_redirects(apps, target_root, into_own_repo=True):
     """Replace the repo-root site with stubs pointing at target_root, path for path.
 
     GitHub Pages cannot send a 301, so each known path gets a meta-refresh + JS stub
@@ -713,11 +714,19 @@ def write_redirects(apps, target_root):
 <body><p>{e(COMPANY)} has moved to <a href="{e(to(''))}">{e(to(''))}</a>.</p></body>
 </html>
 """)
-    write("robots.txt", "User-agent: *\nDisallow: /\n")
-    (ROOT / "CNAME").write_text("bon-app.net\n")
-    (ROOT / ".nojekyll").write_text("")
-    # stubs replace every generated page; drop the now-orphaned standalone sitemap
-    stale = ROOT / "sitemap.xml"
+    if into_own_repo:
+        # this repo IS the redirector: it owns the domain and the Pages config
+        write("robots.txt", "User-agent: *\nDisallow: /\n")
+        (ROOT / "CNAME").write_text("bon-app.net\n")
+        (ROOT / ".nojekyll").write_text("")
+    else:
+        # stubs live inside another site, which owns CNAME/robots/.nojekyll at its root
+        for orphan in ("CNAME", "robots.txt", ".nojekyll"):
+            stale = OUT / orphan
+            if stale.exists():
+                stale.unlink()
+    # stubs replace every generated page; drop the now-orphaned sitemap
+    stale = OUT / "sitemap.xml"
     if stale.exists():
         stale.unlink()
     print(f"wrote {len(pages_built)} redirect files -> {target_root}/")
@@ -734,7 +743,10 @@ def main():
     apps = json.loads((SRC / "apps.json").read_text())
 
     if arg("--redirect-to"):
-        write_redirects(apps, arg("--redirect-to"))
+        if arg("--out"):
+            OUT = Path(arg("--out")).resolve()
+            OUT.mkdir(parents=True, exist_ok=True)
+        write_redirects(apps, arg("--redirect-to"), into_own_repo=OUT == ROOT)
         return
 
     if arg("--mount"):
@@ -800,6 +812,14 @@ def main():
         f"<priority>{'1.0' if not p else '0.8' if p == 'apps' else '0.6'}</priority></url>"
         for p in urls
     )
+    # WordPress-era URLs with no equivalent here; keep them resolving. Skip any that
+    # this build already produced as a real page (about, contact) -- LEGACY_PATHS is
+    # shared with the redirector, where every path is a stub.
+    for old, target in LEGACY_PATHS.items():
+        if (OUT / old / "index.html").exists():
+            continue
+        write(old, redirect_stub(absu(target)))
+
     write("sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n'
           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
           f"{entries}\n</urlset>\n")
