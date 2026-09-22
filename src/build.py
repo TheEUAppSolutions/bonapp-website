@@ -279,6 +279,7 @@ def fill(body, app_name):
     """Resolve the tokens src/extract_legal.py leaves in the legal fragments."""
     return (body
             .replace("{{APP_NAME}}", e(app_name))
+            .replace("{{CONTACT_EMAIL}}", EMAIL)
             .replace("{{PRIVACY_URL}}", url("privacy-policy"))
             .replace("{{TERMS_URL}}", url("term-of-use")))
 

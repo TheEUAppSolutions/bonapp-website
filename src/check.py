@@ -150,8 +150,9 @@ def main():
 
     # the boilerplate's app-name slot must always be filled in
     for page in pages:
-        if "{{APP_NAME}}" in page.read_text(encoding="utf-8"):
-            problems.append(f"{page.relative_to(ROOT)}: unfilled {{{{APP_NAME}}}} placeholder")
+        leftover = re.findall(r"\{\{[A-Z_]+\}\}", page.read_text(encoding="utf-8"))
+        if leftover:
+            problems.append(f"{page.relative_to(ROOT)}: unfilled placeholder {leftover[0]}")
 
     # a mounted copy lives inside another site, which owns these files
     required = [] if MOUNTED else [".nojekyll", "robots.txt", "404.html"]

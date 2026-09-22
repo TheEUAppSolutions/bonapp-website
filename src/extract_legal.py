@@ -42,6 +42,10 @@ WRONG_APP_NAME = re.compile(
 # Neither was ever captured by the archive and neither exists now — they were broken links
 # on the old site (a typo for "bon-app-t-"). Turn them into tokens that build.py resolves
 # to the real pages, so the text keeps its cross-references without inventing URLs.
+# The captured policies give a personal Gmail as the contact address; the company's
+# address replaces it, filled in by build.py so it tracks EMAIL there.
+EMAIL_FIXES = {"bonappdeveloper@gmail.com": "{{CONTACT_EMAIL}}"}
+
 LINK_FIXES = {
     "/bone-app-t-privacy-policy/": "{{PRIVACY_URL}}",
     "/bone-app-t-term-of-use/": "{{TERMS_URL}}",
@@ -185,7 +189,7 @@ def main():
         body = "\n".join(blocks)
         body, swapped = WRONG_APP_NAME.subn("{{APP_NAME}}", body)
         fixed = 0
-        for bad, token in LINK_FIXES.items():
+        for bad, token in {**LINK_FIXES, **EMAIL_FIXES}.items():
             body, n = re.subn(re.escape(bad), token, body)
             fixed += n
         words = len(re.sub(r"(?is)<[^>]+>", " ", body).split())
