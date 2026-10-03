@@ -1,0 +1,19 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="lakeside" tvg-logo="https://bon-app.net/cartv/samples/logos/lakeside.jpg" group-title="Nature",Lakeside Sunset
+https://bon-app.net/cartv/samples/lakeside/index.m3u8
+#EXTINF:-1 tvg-id="aurora" tvg-logo="https://bon-app.net/cartv/samples/logos/aurora.jpg" group-title="Nature",Northern Lights
+https://bon-app.net/cartv/samples/aurora/index.m3u8
+#EXTINF:-1 tvg-id="reef" tvg-logo="https://bon-app.net/cartv/samples/logos/reef.jpg" group-title="Nature",Ocean Reef
+https://bon-app.net/cartv/samples/reef/index.m3u8
+#EXTINF:-1 tvg-id="campfire" tvg-logo="https://bon-app.net/cartv/samples/logos/campfire.jpg" group-title="Movies",Campfire Stories (MKV, subtitles)
+https://bon-app.net/cartv/samples/campfire.mkv
+#EXTINF:-1 tvg-id="coastal" tvg-logo="https://bon-app.net/cartv/samples/logos/coastal.jpg" group-title="Movies",Coastal Drive
+https://bon-app.net/cartv/samples/coastal/index.m3u8
+#EXTINF:-1 tvg-id="newsroom" tvg-logo="https://bon-app.net/cartv/samples/logos/newsroom.jpg" group-title="News",City News 24
+https://bon-app.net/cartv/samples/newsroom/index.m3u8
+#EXTINF:-1 tvg-id="cartoon" tvg-logo="https://bon-app.net/cartv/samples/logos/cartoon.jpg" group-title="Kids",Cartoon Lane
+https://bon-app.net/cartv/samples/cartoon/index.m3u8
+#EXTINF:-1 tvg-id="tears-of-steel" tvg-logo="https://bon-app.net/cartv/samples/logos/tears-of-steel.jpg" group-title="Blender open movies (CC BY)",Tears of Steel (Blender Foundation)
+https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov
+#EXTINF:-1 tvg-id="elephants-dream" tvg-logo="https://bon-app.net/cartv/samples/logos/elephants-dream.jpg" group-title="Blender open movies (CC BY)",Elephants Dream (Blender Foundation)
+https://download.blender.org/ED/elephantsdream-720-h264-st-aac.mov
