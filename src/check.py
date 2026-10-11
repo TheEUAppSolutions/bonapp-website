@@ -94,6 +94,10 @@ def main():
         for href in re.findall(r'href="([^"]+)"', doc):
             if href.startswith(("http", "mailto:", "#", "data:")):
                 continue
+            # An app's own scheme (dicomviewer://redeem/…) is absolute, and only the
+            # device it is meant for can follow it.
+            if re.match(r"^[a-z][a-z0-9+.-]*://", href):
+                continue
             target = resolve(href)
             if target is None:
                 note(rel, f"relative href that will break on nested pages: {href}")

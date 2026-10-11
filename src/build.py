@@ -45,6 +45,19 @@ LEGAL_UMBRELLA = {
     "term-of-use": ("Terms of Use", "term-of-use"),
 }
 # alias path -> the umbrella slug whose text and canonical URL it borrows
+# Apps that hand out Horse Revenue access codes. Each gets a /<slug>/redeem/ page and a
+# line in the site's apple-app-site-association, so a code link opens the app itself
+# instead of this page. A path each: two apps claiming /redeem* would be a coin toss.
+# `team` is the App Store Connect team the app is signed by (Certificates/<account>/).
+REDEEM_APPS = {
+    "dicom-viewer": {
+        "team": "KD5Z3QVD45",
+        "bundleId": "com.bonapp.dicomviewer",
+        "scheme": "dicomviewer",
+        "what": "DICOM Viewer Pro",
+    },
+}
+
 LEGAL_ALIASES = {
     "terms-of-use": "term-of-use",
     "privacy": "privacy-policy",
@@ -631,6 +644,90 @@ def page_legal(slug, title, body, apps, *, canonical_path=None, subtitle=None):
 """ + footer(apps)
 
 
+def page_redeem(app, redeem, apps):
+    """The page a code link lands on when the app is not installed, or on a desktop.
+
+    With the app installed, iOS opens it before this page is ever drawn — that is what
+    the association file below is for. Everything here is the fallback: show the code
+    large enough to read out, offer to open the app, and say where to get it.
+    """
+    store = app["storeUrl"]
+    return head(
+        f"Redeem a code — {app['name']}",
+        f"Redeem an access code for {app['name']}: it unlocks {redeem['what']} on your iPhone and iPad.",
+        f"{app['slug']}/redeem", noindex=True,
+    ) + masthead("apps") + f"""
+<section class="section section--tight">
+<div class="wrap">
+<div class="section-head">
+<p class="eyebrow">{e(app['name'])}</p>
+<h1>Redeem your code</h1>
+<p class="lede">This code unlocks {e(redeem['what'])}. Open it on the iPhone or iPad you want it on.</p>
+</div>
+<div class="prose">
+<p class="redeem-code" id="code" aria-live="polite">—</p>
+<p>
+<a class="btn btn--primary" id="open" href="{e(redeem['scheme'])}://redeem">Open in {e(app['name'])}</a>
+<a class="btn" href="{e(store)}">Get the app</a>
+</p>
+<p id="typed" hidden>No code in this link. Open the app, then Settings &rarr; Redeem code, and type the
+code you were given.</p>
+<p>Already have the app? The code also works under Settings &rarr; Redeem code. One code covers your
+devices: redeem it once, and your other iPhone or iPad picks it up.</p>
+</div>
+</div>
+</section>
+<script>
+// The code arrives as ?code=ABCD-EFGH-IJKL. Nothing is sent anywhere from this page:
+// the app redeems it, so a code in a link read on a desktop is just text to carry over.
+(function () {{
+  // Shown exactly as it was handed out, bar case and stray spaces: a campaign word
+  // is not three groups of four, and re-grouping it would show a code nobody has.
+  var code = new URLSearchParams(location.search).get('code');
+  code = (code || '').trim().toUpperCase();
+  var shown = document.getElementById('code');
+  var open = document.getElementById('open');
+  if (!code) {{
+    shown.hidden = true;
+    open.hidden = true;
+    document.getElementById('typed').hidden = false;
+    return;
+  }}
+  shown.textContent = code;
+  open.href = '{e(redeem['scheme'])}://redeem/' + encodeURIComponent(code.replace(/[^A-Z0-9]/g, ''));
+}})();
+</script>
+""" + footer(apps)
+
+
+def write_aasa(apps):
+    """`/.well-known/apple-app-site-association`: which app owns which path.
+
+    No file extension and no `.html`, so it is written directly rather than through
+    `write()`. GitHub Pages serves it because this repo carries a `.nojekyll` — without
+    that, a path beginning with a dot is dropped from the build.
+    """
+    names = {a["slug"]: a["name"] for a in apps}
+    document = {
+        "applinks": {
+            "details": [
+                {
+                    "appIDs": [f"{redeem['team']}.{redeem['bundleId']}"],
+                    "components": [{
+                        "/": f"/{slug}/redeem*",
+                        "comment": f"Access codes for {names.get(slug, slug)}",
+                    }],
+                }
+                for slug, redeem in REDEEM_APPS.items()
+            ]
+        }
+    }
+    out = OUT / ".well-known" / "apple-app-site-association"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    pages_built.append(str(out.relative_to(OUT)))
+
+
 def page_404(apps):
     return head("Page not found — " + COMPANY,
                 f"That page doesn't exist. See the {len(apps)} apps {COMPANY_LEGAL} "
@@ -777,6 +874,14 @@ def main():
     write("about", page_about(apps, totals))
     write("contact", page_contact(apps))
     write("legal", page_legal_index(apps))
+
+    # Access codes: a page per app that hands them out, and the file that lets the app
+    # take the link before the browser does.
+    for app in apps:
+        if (redeem := REDEEM_APPS.get(app["slug"])):
+            write(f"{app['slug']}/redeem", page_redeem(app, redeem, apps))
+    if not MOUNTED:
+        write_aasa(apps)
 
     bodies = {s: (SRC / "legal" / f"{s}.html").read_text() for s in LEGAL_UMBRELLA}
     # the clean product names, not storeName: App Store titles carry ASO junk

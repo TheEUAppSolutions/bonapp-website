@@ -25,6 +25,13 @@ SELLER = "BON APP & T LTD"
 # slug, bundleId, display name, tagline, blurb
 CURATED = [
     (
+        "dicom-viewer", "com.bonapp.dicomviewer", "DICOM Viewer",
+        "Opens the scans from a hospital CD, on the phone in your pocket.",
+        "Reads the CT, MRI, X-ray and ultrasound files a hospital hands over — from a folder, "
+        "a ZIP, a patient CD or a link — and shows them properly: window and level, "
+        "measurements, three-plane reformatting and 3D. Everything stays on the device.",
+    ),
+    (
         "chooser", "nanotube.chooser", "Chooser!",
         "Everyone puts a finger on the screen. It picks who goes first.",
         "The original finger chooser. Everyone holds a finger on the screen, and it picks "

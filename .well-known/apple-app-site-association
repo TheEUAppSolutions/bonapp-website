@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "KD5Z3QVD45.com.bonapp.dicomviewer"
+        ],
+        "components": [
+          {
+            "/": "/dicom-viewer/redeem*",
+            "comment": "Access codes for DICOM Viewer"
+          }
+        ]
+      }
+    ]
+  }
+}
