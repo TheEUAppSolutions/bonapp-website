@@ -60,6 +60,9 @@ people who have no playlist yet ("Try a sample playlist"):
 - `cartv/samples/` holds the playlist, the logos, and seven one-minute demo channels made for
   the app.
 - The two Blender Foundation films (Creative Commons BY) stream from Blender's own server.
+- `cartv/config.json` holds Car TV's feature switches. `carPlayPhoneScreen` shows the
+  "iPhone screen" row on the car's CarPlay screen; it stays `false` until a version that shows
+  the row has been through App Review. A missing or broken file counts as off.
 
 `CarPlayTV/scripts/make-sample-channels.sh` regenerates all of it.
 
